@@ -256,12 +256,21 @@ session_lock_timer(__unused int fd, __unused short events, void *arg)
 	struct session	*s = arg;
 
 	if (s->flags & SESSION_UNATTACHED)
-		return;
+	{
+		log_debug("Destroy unattached session");
+		session_destroy (s);
+	}
 
-	log_debug("session %s locked, activity time %lld", s->name,
-	    (long long)s->activity_time.tv_sec);
-
-	server_lock_session(s);
+	log_debug("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+	log_debug("session %s. Client tracking enable", s->name);
+	options_set_number(s->options, "lock-after-time", 5);
+	log_debug("session %s reference: %2d", s->name,
+	    (int)s->references);
+	
+	if (gettimeofday(&s->activity_time, NULL) != 0)
+		fatal("gettimeofday failed");
+	session_update_activity(s, NULL);	
+	
 	recalculate_sizes();
 }
 
@@ -290,6 +299,7 @@ session_update_activity(struct session *s, struct timeval *from)
 	if (~s->flags & SESSION_UNATTACHED) {
 		timerclear(&tv);
 		tv.tv_sec = options_get_number(s->options, "lock-after-time");
+		log_debug("session %s timeout set to %06d", s->name, (int)tv.tv_sec);
 		if (tv.tv_sec != 0)
 			evtimer_add(&s->lock_timer, &tv);
 	}
