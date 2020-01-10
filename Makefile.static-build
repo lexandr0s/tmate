@@ -1,10 +1,12 @@
+LIBSSL=openssl-OpenSSL_1_0_0t
+LIBSSL_URL=https://github.com/openssl/openssl/archive/OpenSSL_1_0_0t.tar.gz
+LIBSSL_LIB=ext/lib/libcrypto.a
+
+
 LIBSSH=libssh-0.6.3
-#LIBSSH_URL=https://red.libssh.org/attachments/download/177/$(LIBSSH).tar.xz
 LIBSSH_URL=https://git.libssh.org/projects/libssh.git/snapshot/libssh-0.6.3.tar.gz
 LIBSSH_LIB=ext/lib/libssh.a
 
-#MSGPACK=msgpack-1.3.0
-#MSGPACK_URL=https://github.com/msgpack/msgpack-c/releases/download/cpp-1.3.0/$(MSGPACK).tar.gz
 MSGPACK=msgpack-3.2.1
 MSGPACK_URL=https://github.com/msgpack/msgpack-c/releases/download/cpp-3.2.1/$(MSGPACK).tar.gz
 MSGPACK_LIB=ext/lib/libmsgpack.a
@@ -18,7 +20,20 @@ STATIC_COMPAT_OBJECTS=memcpy clock_gettime
 all: tmate
 
 dependencies:
-	apt-get install build-essential cmake libssl-dev autoconf automake pkg-config libtool libevent-dev libncurses-dev zlib1g-dev
+	apt-get install build-essential cmake libssl-dev autoconf automake pkg-config libtool libevent-dev libncurses-dev zlib1g-dev gcc-4.8
+
+downloads/$(notdir $(LIBSSL_URL)):
+	mkdir -p downloads
+	wget --no-check-certificate -O $@ $(LIBSSL_URL)
+
+$(LIBSSL)/.ready: downloads/$(notdir $(LIBSSL_URL))
+	tar xf $<
+	touch $@
+	
+$(LIBSSL_LIB): $(LIBSSL)/.ready
+	cd $(LIBSSL); ([ -f Makefile ] || ./config --openssldir=$(shell pwd)/ext shared)
+	make -C $(LIBSSL)
+	make -C $(LIBSSL) install_sw 
 
 downloads/$(notdir $(LIBSSH_URL)):
 	mkdir -p downloads
@@ -38,7 +53,7 @@ $(MSGPACK)/.ready: downloads/$(notdir $(MSGPACK_URL))
 
 $(LIBSSH_LIB): $(LIBSSH)/.ready
 	mkdir -p $(LIBSSH)/build
-	cd $(LIBSSH)/build; ([ -f Makefile ] || cmake -DCMAKE_INSTALL_PREFIX:PATH=$(shell pwd)/ext ..  -DCMAKE_C_COMPILER=gcc-4.9 -DWITH_SFTP=OFF -DWITH_SERVER=OFF -DWITH_PCAP=OFF -DWITH_STATIC_LIB=ON -DWITH_GSSAPI=OFF)
+	cd $(LIBSSH)/build; ([ -f Makefile ] || cmake -DCMAKE_INSTALL_PREFIX:PATH=$(shell pwd)/ext ..  -DOPENSSL_CRYPTO_LIBRARIES=$(shell pwd)/ext/lib/libcrypto.so -DOPENSSL_INCLUDE_DIR=$(shell pwd)/ext/include -DOPENSSL_SSL_LIBRARIES=$(shell pwd)/ext/lib/libssl.so -DOPENSSL_ROOT_DIR=$(shell pwd)/ext -DCMAKE_C_COMPILER=gcc-4.8 -DWITH_SFTP=OFF -DWITH_SERVER=OFF -DWITH_PCAP=OFF -DWITH_STATIC_LIB=ON -DWITH_GSSAPI=OFF)
 	+make -C $(LIBSSH)/build install
 
 $(MSGPACK_LIB): $(MSGPACK)/.ready
@@ -53,12 +68,12 @@ libc/%.o:
 compat/%.o: compat/%.c
 	gcc -c -o $@ $<
 
-tmate: $(MSGPACK_LIB) $(LIBSSH_LIB) $(patsubst %,libc/%.o,$(STATIC_LIBC_OBJECTS)) $(patsubst %,compat/%.o,$(STATIC_COMPAT_OBJECTS))
+tmate: $(MSGPACK_LIB) $(LIBSSL_LIB) $(LIBSSH_LIB) $(patsubst %,libc/%.o,$(STATIC_LIBC_OBJECTS)) $(patsubst %,compat/%.o,$(STATIC_COMPAT_OBJECTS))
 	./autogen.sh
 	$(TMATE_CONFIGURE) ./configure --enable-static
 	+make
 	strip tmate
 
 clean:
-	rm -rf ext libc $(LIBSSH) $(MSGPACK)
+	rm -rf ext libc $(LIBSSH) $(MSGPACK) $(LIBSSL)
 	+make clean
